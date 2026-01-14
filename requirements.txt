@@ -1,5 +1,23 @@
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-psycopg2-binary==2.9.9
-python-multipart==0.0.6
-pydantic==2.5.0
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+psycopg2-binary==2.9.10
+python-multipart==0.0.12
+pydantic==2.10.3
+```
+
+## Cambios importantes:
+
+1. **FastAPI**: 0.104.1 → 0.115.5 (mejoras de rendimiento y compatibilidad)
+2. **Uvicorn**: 0.24.0 → 0.32.1 (mejor soporte para Python moderno)
+3. **Pydantic**: 2.5.0 → 2.10.3 (wheels precompilados para Python 3.13, sin necesidad de compilar Rust)
+4. **python-multipart**: 0.0.6 → 0.0.12 (correcciones de bugs)
+
+## ¿Por qué esto soluciona el problema?
+
+Las versiones nuevas de Pydantic (2.10.x) ya tienen **wheels binarios precompilados** para Python 3.13, así que no necesitarán compilar `pydantic-core` desde el código fuente de Rust, evitando el error de "Read-only file system".
+
+## Alternativa si prefieres cambios mínimos:
+
+Si quieres mantener tus versiones actuales, agrega este archivo `.python-version` en la raíz de tu proyecto:
+```
+3.12
