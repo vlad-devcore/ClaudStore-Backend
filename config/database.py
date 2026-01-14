@@ -2,17 +2,20 @@ import psycopg2
 from psycopg2 import pool
 from contextlib import contextmanager
 import os
-from urllib.parse import quote_plus
 
 # Detectar si estamos en modo Supabase o Local
 USE_SUPABASE = os.getenv("USE_SUPABASE", "false").lower() == "true"
 
 if USE_SUPABASE:
-    # Usar DATABASE_URL completa
-    DATABASE_URL = os.getenv("DATABASE_URL")
-    if not DATABASE_URL:
-        raise Exception("DATABASE_URL no está configurada")
-    
+    # CONFIGURACIÓN SUPABASE - Variables individuales
+    DB_CONFIG = {
+        "host": os.getenv("SUPABASE_HOST", "aws-0-us-west-2.pooler.supabase.com"),
+        "port": os.getenv("SUPABASE_PORT", "5432"),
+        "dbname": os.getenv("SUPABASE_DB", "postgres"),
+        "user": os.getenv("SUPABASE_USER", "postgres.tlywccsyiwfdhpixbkjg"),
+        "password": os.getenv("SUPABASE_PASSWORD", "?8$UX3ATrZp%SmP"),
+        "sslmode": "require"
+    }
     print("🌐 Usando SUPABASE POOLER como base de datos")
 else:
     # CONFIGURACIÓN LOCAL
@@ -31,16 +34,11 @@ def init_connection_pool():
     """Inicializa el pool de conexiones"""
     global connection_pool
     try:
-        if USE_SUPABASE:
-            connection_pool = psycopg2.pool.SimpleConnectionPool(
-                1, 10,
-                DATABASE_URL
-            )
-        else:
-            connection_pool = psycopg2.pool.SimpleConnectionPool(
-                1, 10,
-                **DB_CONFIG
-            )
+        connection_pool = psycopg2.pool.SimpleConnectionPool(
+            1,  # Mínimo de conexiones
+            10,  # Máximo de conexiones
+            **DB_CONFIG
+        )
         
         # Configurar UTF-8
         test_conn = connection_pool.getconn()
@@ -50,7 +48,7 @@ def init_connection_pool():
         cursor.close()
         connection_pool.putconn(test_conn)
         
-        print("✅ Pool de conexiones creado exitosamente")
+        print("✅ Pool de conexiones creado exitosamente con UTF-8")
     except Exception as e:
         print(f"❌ Error al crear pool: {e}")
         raise
@@ -63,8 +61,12 @@ def get_db_connection():
     try:
         conn = connection_pool.getconn()
         if conn is None:
-            raise Exception("No hay conexiones disponibles")
+            raise Exception("No hay conexiones disponibles en el pool")
         conn.set_client_encoding('UTF8')
+        cursor = conn.cursor()
+        cursor.execute("SET CLIENT_ENCODING TO 'UTF8';")
+        cursor.close()
+        conn.commit()
         return conn
     except Exception as e:
         print(f"❌ Error al obtener conexión: {e}")
@@ -78,7 +80,16 @@ def release_db_connection(conn):
 
 @contextmanager
 def get_db_cursor(commit=False):
-    """Context manager para cursor"""
+    """
+    Context manager para manejar cursor de base de datos
+    
+    Args:
+        commit (bool): Si es True, hace commit automático. False para solo lectura.
+    
+    Uso:
+        with get_db_cursor(commit=True) as cursor:
+            cursor.execute("INSERT INTO ...")
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -93,7 +104,18 @@ def get_db_cursor(commit=False):
         release_db_connection(conn)
 
 def execute_query(query, params=None, fetch=True):
-    """Ejecuta una consulta SQL"""
+    """
+    Ejecuta una consulta SQL y devuelve los resultados
+    
+    Args:
+        query (str): Query SQL a ejecutar
+        params (tuple): Parámetros para la query
+        fetch (bool): Si es True, devuelve los resultados. False para INSERT/UPDATE/DELETE
+    
+    Returns:
+        list: Lista de tuplas con los resultados (si fetch=True)
+        int: Número de filas afectadas (si fetch=False)
+    """
     with get_db_cursor(commit=not fetch) as cursor:
         cursor.execute(query, params)
         if fetch:
@@ -102,7 +124,16 @@ def execute_query(query, params=None, fetch=True):
             return cursor.rowcount
 
 def execute_query_dict(query, params=None):
-    """Ejecuta consulta y devuelve diccionarios"""
+    """
+    Ejecuta una consulta y devuelve los resultados como lista de diccionarios
+    
+    Args:
+        query (str): Query SQL a ejecutar
+        params (tuple): Parámetros para la query
+    
+    Returns:
+        list: Lista de diccionarios con los resultados
+    """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -115,7 +146,7 @@ def execute_query_dict(query, params=None):
         release_db_connection(conn)
 
 def close_all_connections():
-    """Cierra todas las conexiones"""
+    """Cierra todas las conexiones del pool"""
     global connection_pool
     if connection_pool:
         connection_pool.closeall()
