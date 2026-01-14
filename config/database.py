@@ -1,26 +1,18 @@
 import psycopg2
 from psycopg2 import pool
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from contextlib import contextmanager
 import os
-
-# ==========================================
-# CONFIGURACIÓN DE BASE DE DATOS
-# ==========================================
+from urllib.parse import quote_plus
 
 # Detectar si estamos en modo Supabase o Local
 USE_SUPABASE = os.getenv("USE_SUPABASE", "false").lower() == "true"
 
 if USE_SUPABASE:
-    # CONFIGURACIÓN SUPABASE - USAR POOLER (IPv4 compatible)
-    DB_CONFIG = {
-        "dbname": "postgres",
-        "user": "postgres.tlywccsyiwfdhpixbkjg",  # Nota: agregado el prefijo del proyecto
-        "password": os.getenv("SUPABASE_DB_PASSWORD", "?8$UX3ATrZp%SmP"),
-        "host": "aws-0-us-east-1.pooler.supabase.com",  # 🔧 CAMBIO: usar pooler
-        "port": "6543",  # 🔧 CAMBIO: puerto del pooler (no 5432)
-        "sslmode": "require"  # 🔧 AGREGADO: SSL requerido
-    }
+    # Usar DATABASE_URL completa
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    if not DATABASE_URL:
+        raise Exception("DATABASE_URL no está configurada")
+    
     print("🌐 Usando SUPABASE POOLER como base de datos")
 else:
     # CONFIGURACIÓN LOCAL
@@ -33,20 +25,24 @@ else:
     }
     print("💻 Usando PostgreSQL LOCAL")
 
-# Pool de conexiones para mejor rendimiento
 connection_pool = None
 
 def init_connection_pool():
     """Inicializa el pool de conexiones"""
     global connection_pool
     try:
-        connection_pool = psycopg2.pool.SimpleConnectionPool(
-            1,  # Mínimo de conexiones
-            10,  # Máximo de conexiones
-            **DB_CONFIG
-        )
+        if USE_SUPABASE:
+            connection_pool = psycopg2.pool.SimpleConnectionPool(
+                1, 10,
+                DATABASE_URL
+            )
+        else:
+            connection_pool = psycopg2.pool.SimpleConnectionPool(
+                1, 10,
+                **DB_CONFIG
+            )
         
-        # Configurar todas las conexiones del pool con UTF-8
+        # Configurar UTF-8
         test_conn = connection_pool.getconn()
         test_conn.set_client_encoding('UTF8')
         cursor = test_conn.cursor()
@@ -54,9 +50,9 @@ def init_connection_pool():
         cursor.close()
         connection_pool.putconn(test_conn)
         
-        print("✅ Pool de conexiones creado exitosamente con UTF-8")
+        print("✅ Pool de conexiones creado exitosamente")
     except Exception as e:
-        print(f"❌ Error al crear pool de conexiones: {e}")
+        print(f"❌ Error al crear pool: {e}")
         raise
 
 def get_db_connection():
@@ -67,13 +63,8 @@ def get_db_connection():
     try:
         conn = connection_pool.getconn()
         if conn is None:
-            raise Exception("No hay conexiones disponibles en el pool")
-        # Forzar UTF-8 en cada conexión
+            raise Exception("No hay conexiones disponibles")
         conn.set_client_encoding('UTF8')
-        cursor = conn.cursor()
-        cursor.execute("SET CLIENT_ENCODING TO 'UTF8';")
-        cursor.close()
-        conn.commit()
         return conn
     except Exception as e:
         print(f"❌ Error al obtener conexión: {e}")
@@ -87,16 +78,7 @@ def release_db_connection(conn):
 
 @contextmanager
 def get_db_cursor(commit=False):
-    """
-    Context manager para manejar cursor de base de datos
-    
-    Args:
-        commit (bool): Si es True, hace commit automático. False para solo lectura.
-    
-    Uso:
-        with get_db_cursor(commit=True) as cursor:
-            cursor.execute("INSERT INTO ...")
-    """
+    """Context manager para cursor"""
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -111,18 +93,7 @@ def get_db_cursor(commit=False):
         release_db_connection(conn)
 
 def execute_query(query, params=None, fetch=True):
-    """
-    Ejecuta una consulta SQL y devuelve los resultados
-    
-    Args:
-        query (str): Query SQL a ejecutar
-        params (tuple): Parámetros para la query
-        fetch (bool): Si es True, devuelve los resultados. False para INSERT/UPDATE/DELETE
-    
-    Returns:
-        list: Lista de tuplas con los resultados (si fetch=True)
-        int: Número de filas afectadas (si fetch=False)
-    """
+    """Ejecuta una consulta SQL"""
     with get_db_cursor(commit=not fetch) as cursor:
         cursor.execute(query, params)
         if fetch:
@@ -131,16 +102,7 @@ def execute_query(query, params=None, fetch=True):
             return cursor.rowcount
 
 def execute_query_dict(query, params=None):
-    """
-    Ejecuta una consulta y devuelve los resultados como lista de diccionarios
-    
-    Args:
-        query (str): Query SQL a ejecutar
-        params (tuple): Parámetros para la query
-    
-    Returns:
-        list: Lista de diccionarios con los resultados
-    """
+    """Ejecuta consulta y devuelve diccionarios"""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -153,7 +115,7 @@ def execute_query_dict(query, params=None):
         release_db_connection(conn)
 
 def close_all_connections():
-    """Cierra todas las conexiones del pool"""
+    """Cierra todas las conexiones"""
     global connection_pool
     if connection_pool:
         connection_pool.closeall()
