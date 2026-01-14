@@ -12,15 +12,16 @@ import os
 USE_SUPABASE = os.getenv("USE_SUPABASE", "false").lower() == "true"
 
 if USE_SUPABASE:
-    # CONFIGURACIÓN SUPABASE
+    # CONFIGURACIÓN SUPABASE - USAR POOLER (IPv4 compatible)
     DB_CONFIG = {
         "dbname": "postgres",
-        "user": "postgres",
-        "password": os.getenv("SUPABASE_DB_PASSWORD", "?8$UX3ATrZp%SmP"),  # ⚠️ CAMBIAR ESTO
-        "host": "db.tlywccsyiwfdhpixbkjg.supabase.co",
-        "port": "5432"
+        "user": "postgres.tlywccsyiwfdhpixbkjg",  # Nota: agregado el prefijo del proyecto
+        "password": os.getenv("SUPABASE_DB_PASSWORD", "?8$UX3ATrZp%SmP"),
+        "host": "aws-0-us-east-1.pooler.supabase.com",  # 🔧 CAMBIO: usar pooler
+        "port": "6543",  # 🔧 CAMBIO: puerto del pooler (no 5432)
+        "sslmode": "require"  # 🔧 AGREGADO: SSL requerido
     }
-    print("🌐 Usando SUPABASE como base de datos")
+    print("🌐 Usando SUPABASE POOLER como base de datos")
 else:
     # CONFIGURACIÓN LOCAL
     DB_CONFIG = {
