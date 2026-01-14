@@ -2,8 +2,7 @@ services:
   - type: web
     name: claud-store-api
     env: python
-    region: oregon
-    plan: free
+    rootDir: Backend
     buildCommand: pip install -r requirements.txt
     startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
     envVars:
